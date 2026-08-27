@@ -77,11 +77,12 @@ int main(int argc, char **argv) {
 
     // read out the fifo
     dut->fifo_read_data_rd_en = 1;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         tick(dut, tfp);
         std::cout << "tick out the data: " << std::hex << dut->fifo_read_data_dout << std::endl;
     }
     dut->fifo_read_data_rd_en = 0;
+    std::cout << "break" << std::endl;
 
     delay(dut, tfp, 100);
     
@@ -104,12 +105,13 @@ int main(int argc, char **argv) {
     dut->start_i = 0;
     // read out the fifo
     dut->fifo_read_data_rd_en = 1;
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         tick(dut, tfp);
         std::cout << "tick out the data: " << std::hex << dut->fifo_read_data_dout << std::endl;
     }
     dut->fifo_read_data_rd_en = 0;
-
+    std::cout << "break" << std::endl;
+    
     delay(dut, tfp, 500); 
 
     dut->start_i = 1;

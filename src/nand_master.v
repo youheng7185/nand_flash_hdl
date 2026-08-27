@@ -104,10 +104,12 @@ module nand_master (
     localparam [7:0] ERASE_BLOCK_CMD0 = 8'h60;
     localparam [7:0] ERASE_BLOCK_CMD1 = 8'hD0;
     localparam [3:0] ERASE_BLOCK_ADDR_CYCLE = 4'd2;
+    localparam [7:0] WRITE_PAGE_CMD0 = 8'h80;
+    localparam [7:0] WRITE_PAGE_CMD1 = 8'h10;
+    localparam [3:0] WRITE_PAGE_ADDR_CYCLE = 4'd4;
 
     wire fifo_read_data_wr;
-    reg [31:0] fifo_read_data_din;
-    reg [7:0] fifo_read_data_din_temp;
+    wire [31:0] fifo_read_data_din;
     reg fifo_latch_into_32bit;
     reg fifo_latch_into_32bit_ack;
     reg [1:0] cmd_count; // max 3 cmd count
@@ -123,7 +125,8 @@ module nand_master (
         .empty_o(fifo_read_data_empty)
     );
 
-    assign fifo_read_data_wr = (state == READ_DATA) && (bit_cnt == 8'b0) && clk_rise && !fifo_read_data_full;
+    assign fifo_read_data_din = {24'b0, io_i};
+    assign fifo_read_data_wr = (state == READ_DATA) && (bit_cnt == 8'd0) && clk_rise && !fifo_read_data_full;
 
     always @(posedge clk_i or negedge rst_n) begin
         if (!rst_n) begin
@@ -136,12 +139,12 @@ module nand_master (
             oe_o <= 1'b1;
             addr_cnt <= 3'b0;
             addr_toggle_cnt <= 3'b0;
-            fifo_read_data_din <= 32'd0;
             done_o <= 1'b0;
             error_o <= 1'b0;
             fifo_latch_into_32bit <= 1'b0;
             cmd_count <= 2'd0;
             data_toggle_cnt <= 12'd0;
+            ce_n_o <= 1'b1;
         end else begin
             if (clk_rise) begin
                 case (state) 
@@ -156,6 +159,7 @@ module nand_master (
                         addr_toggle_cnt <= 3'b0;
                         cmd_count <= 2'd0;
                         data_toggle_cnt <= 12'd0;
+                        ce_n_o <= 1'b0;
 
                         if (start_i) begin
                             state <= CMD_PRE;
@@ -339,8 +343,6 @@ module nand_master (
                         re_n_o <= 1'b0;
                         if (bit_cnt == 8'd0) begin
                             if (!fifo_read_data_full) begin
-                                //fifo_read_data_din_temp <= io_i;
-                                fifo_read_data_din <= {24'b0, io_i};
                                 bit_cnt <= 8'd4;
                                 state <= READ_DATA_POST;
                             end
