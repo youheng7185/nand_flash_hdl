@@ -100,6 +100,10 @@ module nand_master (
     localparam [7:0] READ_PARAMETER_ADDR = 8'h00;
     localparam [7:0] READ_PAGE_CMD0 = 8'h00;
     localparam [7:0] READ_PAGE_CMD1 = 8'h30;
+    localparam [3:0] READ_PAGE_ADDR_CYCLE = 4'd4;
+    localparam [7:0] ERASE_BLOCK_CMD0 = 8'h60;
+    localparam [7:0] ERASE_BLOCK_CMD1 = 8'hD0;
+    localparam [3:0] ERASE_BLOCK_ADDR_CYCLE = 4'd2;
 
     wire fifo_read_data_wr;
     reg [31:0] fifo_read_data_din;
@@ -154,16 +158,15 @@ module nand_master (
                         data_toggle_cnt <= 12'd0;
 
                         if (start_i) begin
+                            state <= CMD_PRE;
+
                             if (rst_nand_i) begin
-                                state <= CMD_PRE;
                                 bit_cnt <= 8'd4;
                             end else if (read_param_i) begin
-                                state <= CMD_PRE;
                                 bit_cnt <= 8'd4;
                             end else if (read_page_i) begin
-                                state <= CMD_PRE;
                                 bit_cnt <= 8'd4;
-                                addr_cnt <= 3'd4; // 4 cycle address on my winbond flash
+                                addr_cnt <= READ_PAGE_ADDR_CYCLE; // 4 cycle address on my winbond flash
                                 addr_reg[0] <= addr_input_0[7:0];
                                 addr_reg[1] <= addr_input_0[15:8];
                                 addr_reg[2] <= addr_input_0[23:16];
@@ -171,7 +174,9 @@ module nand_master (
                             end else if (write_page_i) begin
                                 
                             end else if (erase_block_i) begin
-                                
+                                addr_cnt <= ERASE_BLOCK_ADDR_CYCLE;
+                                addr_reg[0] <= addr_input_0[7:0];
+                                addr_reg[1] <= addr_input_0[15:8];
                             end
                         end
                     end
@@ -188,6 +193,12 @@ module nand_master (
                                 io_o <= READ_PAGE_CMD0;
                             end else if (cmd_count == 2'd1) begin
                                 io_o <= READ_PAGE_CMD1;
+                            end
+                        end else if (erase_block_i) begin
+                            if (cmd_count == 2'd0) begin
+                                io_o <= ERASE_BLOCK_CMD0;
+                            end else if (cmd_count == 2'd1) begin
+                                io_o <= ERASE_BLOCK_CMD1;
                             end
                         end
                         
@@ -222,6 +233,14 @@ module nand_master (
                                 state <= ADDR_PRE;
                             end else if (read_page_i) begin
                                 cmd_count <= cmd_count + 2'd1; // shift out second command at the second round
+                                if (addr_toggle_cnt == addr_cnt - 1) begin
+                                    // means previously already shifted out address
+                                    state <= WAIT_READY;
+                                end else begin
+                                    state <= ADDR_PRE;
+                                end
+                            end else if (erase_block_i) begin
+                                cmd_count <= cmd_count + 2'd1;
                                 if (addr_toggle_cnt == addr_cnt - 1) begin
                                     // means previously already shifted out address
                                     state <= WAIT_READY;
@@ -272,6 +291,12 @@ module nand_master (
                                     end else if (cmd_count == 2'b1) begin
                                         state <= CMD_PRE;
                                     end
+                                end else if (erase_block_i) begin
+                                    if (cmd_count == 2'd2) begin
+                                        state <= WAIT_READY;
+                                    end else if (cmd_count == 2'b1) begin
+                                        state <= CMD_PRE;
+                                    end
                                 end
 
                             end else begin
@@ -287,8 +312,12 @@ module nand_master (
                     WAIT_READY: begin
                         if (bit_cnt == 8'd0) begin
                             if (rb_i) begin
-                                state <= READ_DATA_PRE;
-                                bit_cnt <= 8'd4;
+                                if (erase_block_i) begin
+                                    state <= DONE;
+                                end else begin
+                                    state <= READ_DATA_PRE;
+                                    bit_cnt <= 8'd4;
+                                end
                             end
                         end else begin
                             bit_cnt <= bit_cnt - 1;

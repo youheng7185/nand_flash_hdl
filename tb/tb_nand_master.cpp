@@ -110,6 +110,12 @@ int main(int argc, char **argv) {
     }
     dut->fifo_read_data_rd_en = 0;
 
+    delay(dut, tfp, 500); 
+
+    dut->start_i = 1;
+    dut->read_page_i = 0;
+    dut->erase_block_i = 1;
+    delay(dut, tfp, 1500);
     
     std::cout << "finished test\n";
 
