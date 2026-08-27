@@ -68,6 +68,8 @@ int main(int argc, char **argv) {
     dut->io_i = 0xDA;
     delay(dut, tfp, 300);
     dut->io_i = 0x9E;
+    delay(dut, tfp, 300);
+    dut->io_i = 0xCA;    
     delay(dut, tfp, 1000);
 
     dut->start_i = 0;
@@ -75,10 +77,39 @@ int main(int argc, char **argv) {
 
     // read out the fifo
     dut->fifo_read_data_rd_en = 1;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         tick(dut, tfp);
         std::cout << "tick out the data: " << std::hex << dut->fifo_read_data_dout << std::endl;
     }
+    dut->fifo_read_data_rd_en = 0;
+
+    delay(dut, tfp, 100);
+    
+    dut->read_param_i = 0;
+    dut->data_cnt = 4;
+    dut->read_page_i = 1;
+    dut->start_i = 1;
+    dut->addr_input_0 = 0x44332211;
+
+    delay(dut, tfp, 2000);
+    dut->io_i = 0xAB;
+    delay(dut, tfp, 300);
+    dut->io_i = 0xCD;
+    delay(dut, tfp, 300);
+    dut->io_i = 0xEF;
+    delay(dut, tfp, 300);
+    dut->io_i = 0x12; 
+    delay(dut, tfp, 1000);    
+
+    dut->start_i = 0;
+    // read out the fifo
+    dut->fifo_read_data_rd_en = 1;
+    for (int i = 0; i < 5; i++) {
+        tick(dut, tfp);
+        std::cout << "tick out the data: " << std::hex << dut->fifo_read_data_dout << std::endl;
+    }
+    dut->fifo_read_data_rd_en = 0;
+
     
     std::cout << "finished test\n";
 

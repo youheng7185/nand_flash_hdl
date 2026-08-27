@@ -35,7 +35,10 @@ module nand_master (
     input wire fifo_read_data_rd_en,
     output wire [31:0] fifo_read_data_dout,
     output wire fifo_read_data_full,
-    output wire fifo_read_data_empty
+    output wire fifo_read_data_empty,
+
+    input wire [31:0] addr_input_0,
+    input wire [31:0] addr_input_1
 );
 
     parameter DIV = 10; // input 50mhz, output 2.5mhz
@@ -95,12 +98,15 @@ module nand_master (
     localparam [7:0] NAND_RESET_CMD = 8'hFF;
     localparam [7:0] READ_PARAMETER_CMD = 8'hEC;
     localparam [7:0] READ_PARAMETER_ADDR = 8'h00;
+    localparam [7:0] READ_PAGE_CMD0 = 8'h00;
+    localparam [7:0] READ_PAGE_CMD1 = 8'h30;
 
     wire fifo_read_data_wr;
     reg [31:0] fifo_read_data_din;
     reg [7:0] fifo_read_data_din_temp;
     reg fifo_latch_into_32bit;
     reg fifo_latch_into_32bit_ack;
+    reg [1:0] cmd_count; // max 3 cmd count
 
     fifo u_fifo_write_data (
         .clk_i(clk_i),
@@ -130,6 +136,8 @@ module nand_master (
             done_o <= 1'b0;
             error_o <= 1'b0;
             fifo_latch_into_32bit <= 1'b0;
+            cmd_count <= 2'd0;
+            data_toggle_cnt <= 12'd0;
         end else begin
             if (clk_rise) begin
                 case (state) 
@@ -142,6 +150,8 @@ module nand_master (
                         oe_o <= 1'b0; // set as input
                         addr_cnt <= 3'b0;
                         addr_toggle_cnt <= 3'b0;
+                        cmd_count <= 2'd0;
+                        data_toggle_cnt <= 12'd0;
 
                         if (start_i) begin
                             if (rst_nand_i) begin
@@ -151,7 +161,13 @@ module nand_master (
                                 state <= CMD_PRE;
                                 bit_cnt <= 8'd4;
                             end else if (read_page_i) begin
-                                
+                                state <= CMD_PRE;
+                                bit_cnt <= 8'd4;
+                                addr_cnt <= 3'd4; // 4 cycle address on my winbond flash
+                                addr_reg[0] <= addr_input_0[7:0];
+                                addr_reg[1] <= addr_input_0[15:8];
+                                addr_reg[2] <= addr_input_0[23:16];
+                                addr_reg[3] <= addr_input_0[31:24];
                             end else if (write_page_i) begin
                                 
                             end else if (erase_block_i) begin
@@ -167,6 +183,12 @@ module nand_master (
                             io_o <= NAND_RESET_CMD;
                         end else if (read_param_i) begin
                             io_o <= READ_PARAMETER_CMD;
+                        end else if (read_page_i) begin
+                            if (cmd_count == 2'd0) begin
+                                io_o <= READ_PAGE_CMD0;
+                            end else if (cmd_count == 2'd1) begin
+                                io_o <= READ_PAGE_CMD1;
+                            end
                         end
                         
                         if (bit_cnt == 8'd0) begin
@@ -198,6 +220,14 @@ module nand_master (
                                 addr_cnt <= 3'b1;
                                 addr_reg[0] <= READ_PARAMETER_ADDR;
                                 state <= ADDR_PRE;
+                            end else if (read_page_i) begin
+                                cmd_count <= cmd_count + 2'd1; // shift out second command at the second round
+                                if (addr_toggle_cnt == addr_cnt - 1) begin
+                                    // means previously already shifted out address
+                                    state <= WAIT_READY;
+                                end else begin
+                                    state <= ADDR_PRE;
+                                end
                             end
                         end else begin
                             bit_cnt <= bit_cnt - 1;
@@ -231,15 +261,23 @@ module nand_master (
 
                         if (bit_cnt == 8'd0) begin
                             bit_cnt <= 8'd4;
+
                             if (addr_toggle_cnt == addr_cnt - 1) begin
                                 if (read_param_i) begin
                                     state <= WAIT_READY;
                                     bit_cnt <= 8'd4;
-                                    data_toggle_cnt <= 12'd0;
+                                end else if (read_page_i) begin
+                                    if (cmd_count == 2'd2) begin
+                                        state <= WAIT_READY;
+                                    end else if (cmd_count == 2'b1) begin
+                                        state <= CMD_PRE;
+                                    end
                                 end
 
                             end else begin
                                 addr_toggle_cnt <= addr_toggle_cnt + 1;
+                                state <= ADDR_PRE;
+                                bit_cnt <= 8'd4;
                             end
                         end else begin
                             bit_cnt <= bit_cnt - 1;
@@ -286,7 +324,7 @@ module nand_master (
                         re_n_o <= 1'b1;
                         if (bit_cnt == 8'd0) begin
                             bit_cnt <= 8'd4;
-                            if (data_toggle_cnt == data_cnt) begin
+                            if (data_toggle_cnt == data_cnt - 1) begin
                                 state <= DONE;
                             end else begin
                                 data_toggle_cnt <= data_toggle_cnt + 1;
@@ -315,3 +353,4 @@ module nand_master (
     end
 
 endmodule
+ 
