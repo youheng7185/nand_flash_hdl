@@ -119,6 +119,43 @@ int main(int argc, char **argv) {
     dut->erase_block_i = 1;
     delay(dut, tfp, 1500);
     
+    std::cout << "write page now" << std::endl;
+
+    dut->start_i = 0;
+    dut->erase_block_i = 0;
+    delay(dut, tfp, 100);
+
+    dut->fifo_write_data_wr_en = 1;
+    uint32_t data[4] = {0x04030201, 0x08070605, 0x40302010, 0x80706050};
+
+    for (int i = 0; i < 4; i++) {
+        dut->fifo_write_data_din = data[i];
+        tick(dut, tfp);
+    }
+
+    dut->fifo_write_data_wr_en = 0;
+    delay(dut, tfp, 10);
+
+    dut->start_i = 1;
+    dut->write_page_i = 1;
+    dut->data_cnt = 32;
+    dut->addr_input_0 = 0xAB123456;
+
+    delay(dut, tfp, 10000);
+
+    dut->fifo_write_data_wr_en = 1;
+    uint32_t data2[4] = {0x40302010, 0x80706050, 0x04030201, 0x08070605};
+
+    for (int i = 0; i < 4; i++) {
+        dut->fifo_write_data_din = data2[i];
+        tick(dut, tfp);
+    }
+
+    dut->fifo_write_data_wr_en = 0;
+    tick(dut, tfp);
+
+    delay(dut, tfp, 10000);
+
     std::cout << "finished test\n";
 
     // Finish

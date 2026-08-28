@@ -26,16 +26,24 @@ module nand_master (
     input wire read_page_i,
     input wire write_page_i,
     input wire erase_block_i,
+    input wire read_status_i,
 
     input wire [11:0] data_cnt,
 
     output reg done_o,
     output reg error_o,
 
+    // master reads from here
     input wire fifo_read_data_rd_en,
     output wire [31:0] fifo_read_data_dout,
     output wire fifo_read_data_full,
     output wire fifo_read_data_empty,
+
+    // master write to here
+    input wire fifo_write_data_wr_en,
+    input wire [31:0] fifo_write_data_din,
+    output wire fifo_write_data_full,
+    output wire fifo_write_data_empty,
 
     input wire [31:0] addr_input_0,
     input wire [31:0] addr_input_1
@@ -93,7 +101,11 @@ module nand_master (
                 READ_DATA_PRE  = 4'd8,
                 READ_DATA      = 4'd9,
                 READ_DATA_POST = 4'd10,
-                DONE            = 4'd11;
+                WRITE_DATA_FETCH_FROM_FIFO = 4'd11,
+                WRITE_DATA_PRE = 4'd12,
+                WRITE_DATA = 4'd13,
+                WRITE_DATA_POST = 4'd14,
+                DONE            = 4'd15;
 
     localparam [7:0] NAND_RESET_CMD = 8'hFF;
     localparam [7:0] READ_PARAMETER_CMD = 8'hEC;
@@ -107,6 +119,7 @@ module nand_master (
     localparam [7:0] WRITE_PAGE_CMD0 = 8'h80;
     localparam [7:0] WRITE_PAGE_CMD1 = 8'h10;
     localparam [3:0] WRITE_PAGE_ADDR_CYCLE = 4'd4;
+    localparam [7:0] READ_STATUS_CMD0 = 8'h70;
 
     wire fifo_read_data_wr;
     wire [31:0] fifo_read_data_din;
@@ -114,6 +127,7 @@ module nand_master (
     reg fifo_latch_into_32bit_ack;
     reg [1:0] cmd_count; // max 3 cmd count
 
+    // for read page
     fifo u_fifo_write_data (
         .clk_i(clk_i),
         .rst_n(rst_n),
@@ -127,6 +141,83 @@ module nand_master (
 
     assign fifo_read_data_din = {24'b0, io_i};
     assign fifo_read_data_wr = (state == READ_DATA) && (bit_cnt == 8'd0) && clk_rise && !fifo_read_data_full;
+
+    // for write page
+    wire fifo_write_data_rd_en;
+    wire [31:0] fifo_write_data_dout;
+
+    reg [31:0] write_shift_reg;
+    reg [1:0] write_byte_idx;
+    reg fifo_rd_req;
+    reg fifo_rd_req_set;
+    reg fifo_rd_req_done;
+    assign fifo_write_data_rd_en = fifo_rd_req;
+
+    fifo u_fifo_read_data (
+        .clk_i(clk_i),
+        .rst_n(rst_n),
+        .wr_en(fifo_write_data_wr_en),
+        .rd_en(fifo_write_data_rd_en),
+        .din(fifo_write_data_din),
+        .dout(fifo_write_data_dout),
+        .full_o(fifo_write_data_full),
+        .empty_o(fifo_write_data_empty)
+    );
+
+    reg [7:0] data_to_write [0:3];
+    reg fetch_already;
+
+    localparam FIFO_IDLE       = 4'd0,
+                FIFO_RECEIVE_FETCH_SIGNAL    = 4'd1,
+                FIFO_DEASSERT_READ_REQUEST   = 4'd2,
+                FIFO_WRITE_INTO_DATA_TO_WRITE   = 4'd3,
+                FIFO_WRITE_DONE   = 4'd4;
+
+    reg [3:0] fifo_state;
+
+    always @(posedge clk_i or negedge rst_n) begin
+        if (!rst_n) begin
+            fifo_rd_req <= 1'b0;
+            fifo_rd_req_done <= 1'b0;
+            write_shift_reg <= 32'b0;
+            fetch_already <= 1'b0;
+            fifo_state <= FIFO_IDLE;
+        end else begin
+            case (fifo_state)
+                FIFO_IDLE: begin
+                    if (fifo_rd_req_set) begin
+                        fifo_state <= FIFO_RECEIVE_FETCH_SIGNAL;
+                    end
+                end
+
+                FIFO_RECEIVE_FETCH_SIGNAL: begin
+                    fifo_rd_req <= 1'b1;
+                    fifo_state <= FIFO_DEASSERT_READ_REQUEST;
+                end
+
+                FIFO_DEASSERT_READ_REQUEST: begin
+                    fifo_rd_req <= 1'b0;
+                    fifo_state <= FIFO_WRITE_INTO_DATA_TO_WRITE;
+                end
+
+                FIFO_WRITE_INTO_DATA_TO_WRITE: begin
+                    data_to_write[0] <= fifo_write_data_dout[7:0];
+                    data_to_write[1] <= fifo_write_data_dout[15:8];
+                    data_to_write[2] <= fifo_write_data_dout[23:16];
+                    data_to_write[3] <= fifo_write_data_dout[31:24];
+                    fifo_state <= FIFO_WRITE_DONE;
+                end
+
+                FIFO_WRITE_DONE: begin
+                    if (!fifo_rd_req_set) begin
+                        // the main fsm should release this signals afterwards
+                        fifo_state <= FIFO_IDLE;
+                    end
+                end
+
+            endcase
+        end
+    end
 
     always @(posedge clk_i or negedge rst_n) begin
         if (!rst_n) begin
@@ -145,6 +236,9 @@ module nand_master (
             cmd_count <= 2'd0;
             data_toggle_cnt <= 12'd0;
             ce_n_o <= 1'b1;
+            write_shift_reg <= 32'b0;
+            write_byte_idx <= 2'd0;
+            fifo_rd_req_set <= 1'b0;
         end else begin
             if (clk_rise) begin
                 case (state) 
@@ -176,7 +270,12 @@ module nand_master (
                                 addr_reg[2] <= addr_input_0[23:16];
                                 addr_reg[3] <= addr_input_0[31:24];
                             end else if (write_page_i) begin
-                                
+                                bit_cnt <= 8'd4;
+                                addr_cnt <= WRITE_PAGE_ADDR_CYCLE;
+                                addr_reg[0] <= addr_input_0[7:0];
+                                addr_reg[1] <= addr_input_0[15:8];
+                                addr_reg[2] <= addr_input_0[23:16];
+                                addr_reg[3] <= addr_input_0[31:24];
                             end else if (erase_block_i) begin
                                 addr_cnt <= ERASE_BLOCK_ADDR_CYCLE;
                                 addr_reg[0] <= addr_input_0[7:0];
@@ -197,6 +296,12 @@ module nand_master (
                                 io_o <= READ_PAGE_CMD0;
                             end else if (cmd_count == 2'd1) begin
                                 io_o <= READ_PAGE_CMD1;
+                            end
+                        end else if (write_page_i) begin
+                            if (cmd_count == 2'd0) begin
+                                io_o <= WRITE_PAGE_CMD0;
+                            end else if (cmd_count == 2'd1) begin
+                                io_o <= WRITE_PAGE_CMD1;
                             end
                         end else if (erase_block_i) begin
                             if (cmd_count == 2'd0) begin
@@ -236,6 +341,14 @@ module nand_master (
                                 addr_reg[0] <= READ_PARAMETER_ADDR;
                                 state <= ADDR_PRE;
                             end else if (read_page_i) begin
+                                cmd_count <= cmd_count + 2'd1; // shift out second command at the second round
+                                if (addr_toggle_cnt == addr_cnt - 1) begin
+                                    // means previously already shifted out address
+                                    state <= WAIT_READY;
+                                end else begin
+                                    state <= ADDR_PRE;
+                                end
+                            end else if (write_page_i) begin
                                 cmd_count <= cmd_count + 2'd1; // shift out second command at the second round
                                 if (addr_toggle_cnt == addr_cnt - 1) begin
                                     // means previously already shifted out address
@@ -295,6 +408,9 @@ module nand_master (
                                     end else if (cmd_count == 2'b1) begin
                                         state <= CMD_PRE;
                                     end
+                                end else if (write_page_i) begin
+                                    state <= WRITE_DATA_FETCH_FROM_FIFO;
+                                    bit_cnt <= 8'd4;
                                 end else if (erase_block_i) begin
                                     if (cmd_count == 2'd2) begin
                                         state <= WAIT_READY;
@@ -360,6 +476,63 @@ module nand_master (
                             end else begin
                                 data_toggle_cnt <= data_toggle_cnt + 1;
                                 state <= READ_DATA_PRE;
+                                bit_cnt <= 8'd4;
+                            end
+                        end else begin
+                            bit_cnt <= bit_cnt - 1;
+                        end
+                    end
+
+                    WRITE_DATA_FETCH_FROM_FIFO: begin
+                        if (data_toggle_cnt[1:0] == 2'b0) begin
+                            // fifo latch out every four cycle
+                            fifo_rd_req_set <= 1'b1;
+                        end
+                        if (bit_cnt == 8'd0) begin
+                            bit_cnt <= 8'd4;
+                            state <= WRITE_DATA_PRE;
+                        end else begin
+                            bit_cnt <= bit_cnt - 1;
+                        end
+                    end
+
+                    WRITE_DATA_PRE: begin
+                        fifo_rd_req_set <= 1'b0;
+                        oe_o <= 1'b1; // output now
+                        io_o <= data_to_write[data_toggle_cnt[1:0]];
+
+                        if (bit_cnt == 8'd0) begin
+                            bit_cnt <= 8'd4;
+                            state <= WRITE_DATA;
+                        end else begin
+                            bit_cnt <= bit_cnt - 1;
+                        end
+                    end
+
+                    WRITE_DATA: begin
+                        we_n_o <= 1'b0;
+
+                        if (bit_cnt == 8'd0) begin
+                            bit_cnt <= 8'd4;
+                            state <= WRITE_DATA_POST;
+                        end else begin
+                            bit_cnt <= bit_cnt - 1;
+                        end
+                    end
+
+                    WRITE_DATA_POST: begin
+                        we_n_o <= 1'b1;
+
+                        if (bit_cnt == 8'd0) begin
+                            bit_cnt <= 8'd4;
+                            if (data_toggle_cnt == data_cnt - 1) begin
+                                state <= DONE;
+                            end else if ((data_toggle_cnt[1:0] == 2'b11) && fifo_write_data_empty) begin
+                                // wait for master to transfer data in, write havent complete
+
+                            end else begin
+                                data_toggle_cnt <= data_toggle_cnt + 1;
+                                state <= WRITE_DATA_FETCH_FROM_FIFO;
                                 bit_cnt <= 8'd4;
                             end
                         end else begin

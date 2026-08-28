@@ -1,3 +1,4 @@
 obj_dir_nand/
 waveform.vcd
 datasheet/
+wave.gtkw
