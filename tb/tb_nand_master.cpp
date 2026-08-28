@@ -156,6 +156,23 @@ int main(int argc, char **argv) {
 
     delay(dut, tfp, 10000);
 
+    std::cout << "test for reading status" << std::endl;
+
+    dut->start_i = 0;
+
+    delay(dut, tfp, 100);
+
+    dut->data_cnt = 0;
+    dut->write_page_i = 0;
+    dut->read_status_i = 1;
+    dut->start_i = 1;
+    dut->io_i = 0x34; // fake status
+    delay(dut, tfp, 1000);
+    // std::cout << "status: " << dut->status_o << std::endl;
+    
+    dut->start_i = 0;
+    delay(dut, tfp, 1000);
+
     std::cout << "finished test\n";
 
     // Finish
