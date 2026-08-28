@@ -362,7 +362,7 @@ module nand_master (
                                 cmd_count <= cmd_count + 2'd1; // shift out second command at the second round
                                 if (addr_toggle_cnt == addr_cnt - 1) begin
                                     // means previously already shifted out address
-                                    state <= WAIT_READY;
+                                    state <= DONE;
                                 end else begin
                                     state <= ADDR_PRE;
                                 end
@@ -541,7 +541,11 @@ module nand_master (
                         if (bit_cnt == 8'd0) begin
                             bit_cnt <= 8'd4;
                             if (data_toggle_cnt == data_cnt - 1) begin
-                                state <= DONE;
+                                if (write_page_i) begin
+                                    state <= CMD_PRE;
+                                end else begin
+                                    state <= DONE;
+                                end
                             end else if ((data_toggle_cnt[1:0] == 2'b11) && fifo_write_data_empty) begin
                                 // wait for master to transfer data in, write havent complete
 
