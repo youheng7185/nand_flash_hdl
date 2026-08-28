@@ -84,7 +84,7 @@ module nand_master (
         end
     end
 
-    reg [5:0] state;
+    reg [4:0] state;
     reg [31:0] value;
     reg [7:0] bit_cnt;
     reg [2:0] addr_cnt;
@@ -117,19 +117,17 @@ module nand_master (
     localparam [7:0] READ_PARAMETER_ADDR = 8'h00;
     localparam [7:0] READ_PAGE_CMD0 = 8'h00;
     localparam [7:0] READ_PAGE_CMD1 = 8'h30;
-    localparam [3:0] READ_PAGE_ADDR_CYCLE = 4'd4;
+    localparam [2:0] READ_PAGE_ADDR_CYCLE = 3'd4;
     localparam [7:0] ERASE_BLOCK_CMD0 = 8'h60;
     localparam [7:0] ERASE_BLOCK_CMD1 = 8'hD0;
-    localparam [3:0] ERASE_BLOCK_ADDR_CYCLE = 4'd2;
+    localparam [2:0] ERASE_BLOCK_ADDR_CYCLE = 3'd2;
     localparam [7:0] WRITE_PAGE_CMD0 = 8'h80;
     localparam [7:0] WRITE_PAGE_CMD1 = 8'h10;
-    localparam [3:0] WRITE_PAGE_ADDR_CYCLE = 4'd4;
+    localparam [2:0] WRITE_PAGE_ADDR_CYCLE = 3'd4;
     localparam [7:0] READ_STATUS_CMD0 = 8'h70;
 
     wire fifo_read_data_wr;
     wire [31:0] fifo_read_data_din;
-    reg fifo_latch_into_32bit;
-    reg fifo_latch_into_32bit_ack;
     reg [1:0] cmd_count; // max 3 cmd count
 
     // for read page
@@ -151,8 +149,6 @@ module nand_master (
     wire fifo_write_data_rd_en;
     wire [31:0] fifo_write_data_dout;
 
-    reg [31:0] write_shift_reg;
-    reg [1:0] write_byte_idx;
     reg fifo_rd_req;
     reg fifo_rd_req_set;
     reg fifo_rd_req_done;
@@ -170,7 +166,6 @@ module nand_master (
     );
 
     reg [7:0] data_to_write [0:3];
-    reg fetch_already;
 
     localparam FIFO_IDLE       = 4'd0,
                 FIFO_RECEIVE_FETCH_SIGNAL    = 4'd1,
@@ -184,8 +179,6 @@ module nand_master (
         if (!rst_n) begin
             fifo_rd_req <= 1'b0;
             fifo_rd_req_done <= 1'b0;
-            write_shift_reg <= 32'b0;
-            fetch_already <= 1'b0;
             fifo_state <= FIFO_IDLE;
         end else begin
             case (fifo_state)
@@ -219,7 +212,10 @@ module nand_master (
                         fifo_state <= FIFO_IDLE;
                     end
                 end
-
+                
+                default: begin
+                    $display("shouldnt reach here for fifo");
+                end
             endcase
         end
     end
@@ -237,12 +233,9 @@ module nand_master (
             addr_toggle_cnt <= 3'b0;
             done_o <= 1'b0;
             error_o <= 1'b0;
-            fifo_latch_into_32bit <= 1'b0;
             cmd_count <= 2'd0;
             data_toggle_cnt <= 12'd0;
             ce_n_o <= 1'b1;
-            write_shift_reg <= 32'b0;
-            write_byte_idx <= 2'd0;
             fifo_rd_req_set <= 1'b0;
         end else begin
             if (clk_rise) begin
@@ -362,7 +355,7 @@ module nand_master (
                                 cmd_count <= cmd_count + 2'd1; // shift out second command at the second round
                                 if (addr_toggle_cnt == addr_cnt - 1) begin
                                     // means previously already shifted out address
-                                    state <= DONE;
+                                    state <= WAIT_READY;
                                 end else begin
                                     state <= ADDR_PRE;
                                 end
@@ -445,6 +438,8 @@ module nand_master (
                         if (bit_cnt == 8'd0) begin
                             if (rb_i) begin
                                 if (erase_block_i) begin
+                                    state <= DONE;
+                                end else if (write_page_i) begin
                                     state <= DONE;
                                 end else if (read_status_i) begin
                                     bit_cnt <= 8'd4;
@@ -560,7 +555,8 @@ module nand_master (
                     end
 
                     READ_STATUS_PRE: begin
-                        re_n_o <= 1'b1;
+                        re_n_o <= 1'b0;
+                        oe_o <= 1'b0;
                         if (bit_cnt == 8'd0) begin
                             bit_cnt <= 8'd4;
                             state <= READ_STATUS;
@@ -570,14 +566,23 @@ module nand_master (
                     end
 
                     READ_STATUS: begin
-                        oe_o <= 1'b0;
                         status_o <= io_i;
-                        state <= READ_STATUS_POST;
+                        if (bit_cnt == 8'd0) begin
+                            bit_cnt <= 8'd4;
+                            state   <= READ_STATUS_POST;
+                        end else begin
+                            bit_cnt <= bit_cnt - 1;
+                        end
                     end
 
                     READ_STATUS_POST: begin
-                        re_n_o <= 1'b0;
-                        state <= DONE;
+                        re_n_o <= 1'b1;
+                        if (bit_cnt == 8'd0) begin
+                            bit_cnt <= 8'd4;
+                            state   <= DONE;
+                        end else begin
+                            bit_cnt <= bit_cnt - 1;
+                        end
                     end
 
                     DONE: begin

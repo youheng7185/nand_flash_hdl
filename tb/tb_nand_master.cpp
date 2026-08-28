@@ -166,8 +166,13 @@ int main(int argc, char **argv) {
     dut->write_page_i = 0;
     dut->read_status_i = 1;
     dut->start_i = 1;
-    dut->io_i = 0x34; // fake status
+    
+    delay(dut, tfp, 300);
+    dut->rb_i = 0; // fake not ready
     delay(dut, tfp, 1000);
+    dut->rb_i = 1;
+    dut->io_i = 0x34; // fake status
+    delay(dut, tfp, 500);
     // std::cout << "status: " << dut->status_o << std::endl;
     
     dut->start_i = 0;
