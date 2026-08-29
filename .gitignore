@@ -3,3 +3,4 @@ waveform.vcd
 datasheet/
 wave.gtkw
 obj_dir_axi_fifo/
+obj_dir_axi_nand/

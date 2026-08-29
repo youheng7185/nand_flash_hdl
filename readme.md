@@ -17,9 +17,9 @@ These are enough for all basic usage of nand flash isn't it
 | 0x00   | CTRL       | W: bit[0]=start, bit[3:1]=op select (000=rst,001=read_param, |
 |        |            |    010=read_page,011=write_page,100=erase,101=read_status)|
 | 0x04   | STATUS     | R: bit[0]=done, bit[1]=error,                            |
-|        |            |    bit[3:2]=fifo_write_full/empty,                       |
-|        |            |    bit[5:4]=fifo_read_full/empty,                        |
-|        |            |    bit[13:6]=NAND status byte from Read Status command    |
+|        |            |    bit[5:4]=fifo_write_full/empty,                       |
+|        |            |    bit[7:6]=fifo_read_full/empty,                        |
+|        |            |    bit[15:8]=NAND status byte from Read Status command    |
 | 0x08   | DATA_CNT   | R/W: bit[11:0]=number of bytes to tx/rx                  |
 | 0x0C   | ADDR0      | R/W: bit[31:0]=first 4 address bytes                     |
 | 0x10   | ADDR1      | R/W: bit[31:0]=second 4 address bytes                    |

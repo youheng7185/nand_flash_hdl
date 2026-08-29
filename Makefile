@@ -52,27 +52,29 @@ run_nand: build_nand
 # run_axi_mdio: build_axi_mdio
 # 	./$(AXI_OBJ)/V$(AXI_TOP)
 
-# # ==================================================
-# # FIFO
-# # ==================================================
+# ==================================================
+# AXI_NAND
+# ==================================================
 
-# FIFO_TOP = fifo
-# FIFO_TB  = tb/tb_fifo.cpp
-# FIFO_OBJ = obj_dir_fifo
+AXI_NAND_TOP = axi_nand
+AXI_NAND_TB  = tb/tb_axi_nand.cpp
+AXI_NAND_OBJ = obj_dir_axi_nand
 
-# FIFO_SRC = src/fifo.v
+AXI_NAND_SRC = src/axi_nand.v \
+				src/nand_master.v \
+				src/fifo.v
 
-# $(FIFO_OBJ)/V$(FIFO_TOP).mk: $(FIFO_SRC) $(FIFO_TB)
-# 	verilator $(VERILATOR_FLAGS) \
-# 		--Mdir $(FIFO_OBJ) \
-# 		--cc $(FIFO_SRC) \
-# 		--exe $(FIFO_TB)
+$(AXI_NAND_OBJ)/V$(AXI_NAND_TOP).mk: $(AXI_NAND_SRC) $(AXI_NAND_TB)
+	verilator $(VERILATOR_FLAGS) \
+		--Mdir $(AXI_NAND_OBJ) \
+		--cc $(AXI_NAND_SRC) \
+		--exe $(AXI_NAND_TB)
 
-# build_fifo: $(FIFO_OBJ)/V$(FIFO_TOP).mk
-# 	make -j -C $(FIFO_OBJ) -f V$(FIFO_TOP).mk V$(FIFO_TOP)
+build_axi_nand: $(AXI_NAND_OBJ)/V$(AXI_NAND_TOP).mk
+	make -j -C $(AXI_NAND_OBJ) -f V$(AXI_NAND_TOP).mk V$(AXI_NAND_TOP)
 
-# run_fifo: build_fifo
-# 	./$(FIFO_OBJ)/V$(FIFO_TOP)
+run_axi_nand: build_axi_nand
+	./$(AXI_NAND_OBJ)/V$(AXI_NAND_TOP)
 
 # ==================================================
 # AXI_FIFO
@@ -101,7 +103,6 @@ run_axi_fifo: build_axi_fifo
 # Default
 # ==================================================
 
-
 all: run_nand
 
 clean:
@@ -111,4 +112,5 @@ clean:
 .PHONY: all \
 	build_nand run_nand \
 	build_axi_fifo run_axi_fifo \
+	build_axi_nand run_axi_nand \
 	clean
