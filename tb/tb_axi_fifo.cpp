@@ -56,13 +56,13 @@ void axi_write(Vaxi_fifo *dut, VerilatedVcdC* tfp,
 uint32_t axi_read(Vaxi_fifo *dut, VerilatedVcdC* tfp,
                   uint32_t addr)
 {
-    dut->S_AXI_ARADDR  = addr;
-    dut->S_AXI_ARVALID = 1;
-    dut->S_AXI_RREADY  = 1;
-
     // Wait for ARREADY
     while (!dut->S_AXI_ARREADY)
         tick(dut, tfp);
+
+    dut->S_AXI_ARADDR  = addr;
+    dut->S_AXI_ARVALID = 1;
+    dut->S_AXI_RREADY  = 1;
 
     tick(dut, tfp);
     dut->S_AXI_ARVALID = 0;
@@ -153,16 +153,18 @@ int main(int argc, char **argv) {
     axi_write(dut, tfp, 0x08, 0x1234ABCD);
     axi_write(dut, tfp, 0x08, 0x12340001);
     axi_write(dut, tfp, 0x08, 0x12340002);
-    delay(dut, tfp, 10);
+    axi_write(dut, tfp, 0x08, 0x12340004);
+    // delay(dut, tfp, 10);
 
     uint32_t fifo_out = axi_read(dut, tfp, 0x08);
     std::cout << "fifo out value: " << std::hex << fifo_out << std::endl;
-    delay(dut, tfp, 10);
     fifo_out = axi_read(dut, tfp, 0x08);
     std::cout << "fifo out value: " << std::hex << fifo_out << std::endl;
-    delay(dut, tfp, 10);
     fifo_out = axi_read(dut, tfp, 0x08);
     std::cout << "fifo out value: " << std::hex << fifo_out << std::endl;
+    fifo_out = axi_read(dut, tfp, 0x08);
+    std::cout << "fifo out value: " << std::hex << fifo_out << std::endl;
+
     delay(dut, tfp, 10);
 
     // Finish
