@@ -74,28 +74,28 @@ run_nand: build_nand
 # run_fifo: build_fifo
 # 	./$(FIFO_OBJ)/V$(FIFO_TOP)
 
-# # ==================================================
-# # AXI_FIFO
-# # ==================================================
+# ==================================================
+# AXI_FIFO
+# ==================================================
 
-# AXI_FIFO_TOP = axi_fifo
-# AXI_FIFO_TB  = tb/tb_axi_fifo.cpp
-# AXI_FIFO_OBJ = obj_dir_axi_fifo
+AXI_FIFO_TOP = axi_fifo
+AXI_FIFO_TB  = tb/tb_axi_fifo.cpp
+AXI_FIFO_OBJ = obj_dir_axi_fifo
 
-# AXI_FIFO_SRC = src/axi_fifo.v \
-# 				src/fifo.v
+AXI_FIFO_SRC = src/axi_fifo.v \
+				src/fifo.v
 
-# $(AXI_FIFO_OBJ)/V$(AXI_FIFO_TOP).mk: $(AXI_FIFO_SRC) $(AXI_FIFO_TB)
-# 	verilator $(VERILATOR_FLAGS) \
-# 		--Mdir $(AXI_FIFO_OBJ) \
-# 		--cc $(AXI_FIFO_SRC) \
-# 		--exe $(AXI_FIFO_TB)
+$(AXI_FIFO_OBJ)/V$(AXI_FIFO_TOP).mk: $(AXI_FIFO_SRC) $(AXI_FIFO_TB)
+	verilator $(VERILATOR_FLAGS) \
+		--Mdir $(AXI_FIFO_OBJ) \
+		--cc $(AXI_FIFO_SRC) \
+		--exe $(AXI_FIFO_TB)
 
-# build_axi_fifo: $(AXI_FIFO_OBJ)/V$(AXI_FIFO_TOP).mk
-# 	make -j -C $(AXI_FIFO_OBJ) -f V$(AXI_FIFO_TOP).mk V$(AXI_FIFO_TOP)
+build_axi_fifo: $(AXI_FIFO_OBJ)/V$(AXI_FIFO_TOP).mk
+	make -j -C $(AXI_FIFO_OBJ) -f V$(AXI_FIFO_TOP).mk V$(AXI_FIFO_TOP)
 
-# run_axi_fifo: build_axi_fifo
-# 	./$(AXI_FIFO_OBJ)/V$(AXI_FIFO_TOP)
+run_axi_fifo: build_axi_fifo
+	./$(AXI_FIFO_OBJ)/V$(AXI_FIFO_TOP)
 
 # ==================================================
 # Default
@@ -110,4 +110,5 @@ clean:
 
 .PHONY: all \
 	build_nand run_nand \
+	build_axi_fifo run_axi_fifo \
 	clean
