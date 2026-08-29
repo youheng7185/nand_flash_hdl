@@ -247,7 +247,6 @@ module	axi_fifo #(
 		end
 	end
 
-    reg	axil_arready;
 	reg axil_arready_r;
     assign	arskd_addr = S_AXI_ARADDR[C_AXI_ADDR_WIDTH-1:ADDRLSB];
 
@@ -266,7 +265,6 @@ module	axi_fifo #(
 	end
 
 	assign S_AXI_ARREADY = axil_arready_r;
-	assign axil_arready  = axil_arready_r;
 
     assign	axil_read_ready = (S_AXI_ARVALID && S_AXI_ARREADY);
 
