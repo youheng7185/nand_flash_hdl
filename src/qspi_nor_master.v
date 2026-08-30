@@ -164,12 +164,13 @@ module qspi_nor_master (
     localparam IDLE       = 5'd0,
                 CS_N_ASSERT = 5'd1,
                 SEND_CMD = 5'd2,
-                PULL_DOWN_CS_BEFORE_DONE = 5'd3,
-                SEND_ADDRESS = 5'd4,
-                SEND_DUMMY = 5'd5,
-                SEND_DATA = 5'd6,
+                SEND_ADDRESS = 5'd3,
+                SEND_DUMMY = 5'd4,
+                SEND_DATA = 5'd5,
+                READ_DATA_PRE = 5'd6,
                 READ_DATA = 5'd7,
-                DONE = 5'd8;
+                PULL_DOWN_CS_BEFORE_DONE = 5'd8,
+                DONE = 5'd9;
 
     reg [4:0] state;
     reg do_fifo_write;
@@ -260,13 +261,12 @@ module qspi_nor_master (
                         if (counter_clk_fall == 8'd0) begin
                             if (has_address_i == 1'b1) begin
                                 state <= SEND_ADDRESS;
-                                counter_clk_fall <= 8'd24;  // fixme
+                                counter_clk_fall <= 8'd23;  // fixme
                             end else if (data_mode_i == 2'b01) begin
                                 if (data_dir_i == 1'b1) begin
                                     state <= SEND_DATA;
                                 end else begin
-                                    state <= READ_DATA;
-                                    mosi_o <= 1'b0;
+                                    state <= READ_DATA_PRE; // idk?
                                 end
 
                                 counter_clk_fall <= 8'd7;
@@ -288,7 +288,8 @@ module qspi_nor_master (
                                     if (data_dir_i == 1'b1) begin
                                         state <= SEND_DATA;
                                     end else begin
-                                        state <= READ_DATA;
+                                        // state <= READ_DATA;
+                                        state <= READ_DATA_PRE;
                                     end
                                     counter_clk_fall <= 8'd7;
                                     counter_data_flow <= 8'd0;
@@ -312,6 +313,10 @@ module qspi_nor_master (
                         end else begin
                             counter_clk_fall <= counter_clk_fall - 1;
                         end
+                    end
+
+                    READ_DATA_PRE: begin
+                        state <= READ_DATA;
                     end
 
                     SEND_DATA: begin

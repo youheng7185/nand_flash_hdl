@@ -168,8 +168,27 @@ int main(int argc, char **argv) {
     tick(dut, tfp);
     std::cout << "tick out the data: " << std::hex << dut->tx_fifo_data_dout << std::endl;
     printf("in binary: 0b%b\n", dut->tx_fifo_data_dout);
-    dut->tx_fifo_rd_en = 0;    
+    dut->tx_fifo_rd_en = 0;  
     tick(dut, tfp);
+    dut->start_i = 0;
+    delay(dut, tfp, 10);
+
+    dut->start_i = 1;
+    dut->instr_i = 0x05;
+    dut->data_mode_i = 0b01;
+    dut->data_cnt_i = 0;
+    dut->has_address_i = 0;
+    dut->data_dir_i = 0;
+    delay(dut, tfp, 100);
+
+    // dut->start_i = 1;
+    // dut->instr_i = 0x05;
+    // dut->data_mode_i = 0b01;
+    // dut->data_cnt_i = 0;
+    // dut->has_address_i = 1;
+    
+    // dut->data_dir_i = 0;
+    // delay(dut, tfp, 300);
 
     std::cout << "finished test\n";
 
