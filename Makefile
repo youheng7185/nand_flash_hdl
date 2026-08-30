@@ -29,29 +29,6 @@ build_nand: $(nand_OBJ)/V$(nand_TOP).mk
 run_nand: build_nand
 	./$(nand_OBJ)/V$(nand_TOP)
 
-# # ==================================================
-# # AXI wrapped MDIO master
-# # ==================================================
-
-# AXI_TOP = axi_mdio
-# AXI_TB  = tb/tb_axi_mdio.cpp
-# AXI_OBJ = obj_dir_axi_mdio
-
-# AXI_SRC = src/axi_mdio.v \
-#           src/mdio_master.v
-
-# $(AXI_OBJ)/V$(AXI_TOP).mk: $(AXI_SRC) $(AXI_TB)
-# 	verilator $(VERILATOR_FLAGS) \
-# 		--Mdir $(AXI_OBJ) \
-# 		--cc $(AXI_SRC) \
-# 		--exe $(AXI_TB)
-
-# build_axi_mdio: $(AXI_OBJ)/V$(AXI_TOP).mk
-# 	make -j -C $(AXI_OBJ) -f V$(AXI_TOP).mk V$(AXI_TOP)
-
-# run_axi_mdio: build_axi_mdio
-# 	./$(AXI_OBJ)/V$(AXI_TOP)
-
 # ==================================================
 # AXI_NAND
 # ==================================================
@@ -100,17 +77,41 @@ run_axi_fifo: build_axi_fifo
 	./$(AXI_FIFO_OBJ)/V$(AXI_FIFO_TOP)
 
 # ==================================================
+# qspi nor master
+# ==================================================
+
+nor_TOP = qspi_nor_master
+nor_TB  = tb/tb_qspi_nor_master.cpp
+nor_OBJ = obj_dir_qspi_nor
+
+nor_SRC = src/qspi_nor_master.v \
+		  src/fifo.v
+
+$(nor_OBJ)/V$(nor_TOP).mk: $(nor_SRC) $(nor_TB)
+	verilator $(VERILATOR_FLAGS) \
+		--Mdir $(nor_OBJ) \
+		--cc $(nor_SRC) \
+		--exe $(nor_TB)
+
+build_nor: $(nor_OBJ)/V$(nor_TOP).mk
+	make -j -C $(nor_OBJ) -f V$(nor_TOP).mk V$(nor_TOP)
+
+run_nor: build_nor
+	./$(nor_OBJ)/V$(nor_TOP)
+
+# ==================================================
 # Default
 # ==================================================
 
 all: run_nand
 
 clean:
-	rm -rf obj_dir_nand
+	rm -rf obj_dir_nand obj_dir_axi_fifo obj_dir_qspi_nor
 	rm -f *.vcd *.o *.d *.exe
 
 .PHONY: all \
 	build_nand run_nand \
 	build_axi_fifo run_axi_fifo \
 	build_axi_nand run_axi_nand \
+	build_nor run_nor \
 	clean
