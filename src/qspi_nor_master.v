@@ -260,7 +260,7 @@ module qspi_nor_master (
                         if (counter_clk_fall == 8'd0) begin
                             if (has_address_i == 1'b1) begin
                                 state <= SEND_ADDRESS;
-                                counter_clk_fall <= 8'd23;
+                                counter_clk_fall <= 8'd24;  // fixme
                             end else if (data_mode_i == 2'b01) begin
                                 if (data_dir_i == 1'b1) begin
                                     state <= SEND_DATA;
@@ -285,7 +285,11 @@ module qspi_nor_master (
                             if (data_mode_i == 2'b01) begin
                                 // has data to send
                                 if (dummy_cnt_i == 5'b0) begin
-                                    state <= SEND_DATA;
+                                    if (data_dir_i == 1'b1) begin
+                                        state <= SEND_DATA;
+                                    end else begin
+                                        state <= READ_DATA;
+                                    end
                                     counter_clk_fall <= 8'd7;
                                     counter_data_flow <= 8'd0;
                                 end else begin
