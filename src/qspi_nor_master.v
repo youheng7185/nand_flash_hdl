@@ -115,13 +115,11 @@ module qspi_nor_master (
     reg [3:0] fifo_state;
     reg fifo_rd_req;
     reg fifo_rd_req_set;
-    reg fifo_rd_req_done;
     assign fifo_data_rd_en = fifo_rd_req;
 
     always @(posedge clk_i or negedge rst_n) begin
         if (!rst_n) begin
             fifo_rd_req <= 1'b0;
-            fifo_rd_req_done <= 1'b0;
             fifo_state <= FIFO_IDLE;
         end else begin
             case (fifo_state)
@@ -174,8 +172,6 @@ module qspi_nor_master (
                 DONE = 5'd8;
 
     reg [4:0] state;
-    reg [7:0] counter_data_sent;
-    reg fifo_input_latch_now;
     reg do_fifo_write;
     reg [31:0] read_data_reg_for_fifo_input;
 
@@ -191,7 +187,6 @@ module qspi_nor_master (
             done_o <= 1'b0;
             mosi_o <= 1'b0;
             counter_data_flow <= 8'd0;
-            fifo_input_latch_now <= 1'b0;
             do_fifo_write <= 1'b0;
             read_data_reg_for_fifo_input <= 32'b0;
         end else begin
@@ -231,15 +226,13 @@ module qspi_nor_master (
 
                     READ_DATA: begin
                         read_data_reg_for_fifo_input[counter_clk_rise[4:0]] <= miso_i;
-                        // fifo_input_latch_now <= 1'b0;
-                        // do_fifo_write <= 1'b0;
                         
                         if (counter_clk_rise == 8'd0) begin
                             counter_clk_rise <= 8'd7;
-                            $display("miso_i value: %d", miso_i);
-                            $display("current reg: 0x%x", read_data_reg_for_fifo_input);
+                            // $display("miso_i value: %d", miso_i);
+                            // $display("current reg: 0x%x", read_data_reg_for_fifo_input);
                         end else begin
-                            $display("miso_i value: %d", miso_i);
+                            // $display("miso_i value: %d", miso_i);
                             counter_clk_rise <= counter_clk_rise - 1;
                         end
                     end
@@ -277,7 +270,6 @@ module qspi_nor_master (
                                 end
 
                                 counter_clk_fall <= 8'd7;
-                                counter_data_sent <= 8'd0;
                                 counter_data_flow <= 8'd0;
                             end else begin
                                 state <= PULL_DOWN_CS_BEFORE_DONE;
@@ -295,7 +287,6 @@ module qspi_nor_master (
                                 if (dummy_cnt_i == 5'b0) begin
                                     state <= SEND_DATA;
                                     counter_clk_fall <= 8'd7;
-                                    counter_data_sent <= 8'd0;
                                     counter_data_flow <= 8'd0;
                                 end else begin
                                     state <= SEND_DUMMY;
@@ -332,7 +323,6 @@ module qspi_nor_master (
                                     if (!rx_fifo_data_empty) begin
                                         counter_clk_fall <= 8'd7;
                                         counter_data_flow <= counter_data_flow + 1;
-                                        counter_data_sent <= counter_data_sent + 1;
                                         fifo_rd_req_set <= 1'b1;
                                         clk_out_en <= 1'b1;
                                     end else begin
@@ -342,8 +332,7 @@ module qspi_nor_master (
                                 end else begin
                                         fifo_rd_req_set <= 1'b0;
                                         counter_clk_fall <= 8'd7;
-                                        counter_data_flow <= counter_data_flow + 1;
-                                        counter_data_sent <= counter_data_sent + 1;                                        
+                                        counter_data_flow <= counter_data_flow + 1;                                     
                                     end
                                 end
                             
