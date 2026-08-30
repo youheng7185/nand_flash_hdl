@@ -11,7 +11,7 @@ module qspi_nor_master (
     output reg done_o,
 
     input wire [7:0] instr_i,
-    input wire rd_wr_i, // 1 for read, 0 for write
+    // input wire rd_wr_i, // 1 for read, 0 for write
     input wire [4:0] dummy_cnt_i,
     input wire [1:0] data_mode_i, // 00 for not sending data, 01 to transmit based on data_cnt_i
     input wire [7:0] data_cnt_i, // write 0 for 1 byte to send
@@ -67,7 +67,7 @@ module qspi_nor_master (
         end
     end
 
-    reg fifo_data_wr_en;
+    wire fifo_data_wr_en;
     reg [31:0] fifo_data_wr;
 
     // master reading this, controller writes to here, NAND controller -> master
@@ -170,10 +170,16 @@ module qspi_nor_master (
                 SEND_ADDRESS = 5'd4,
                 SEND_DUMMY = 5'd5,
                 SEND_DATA = 5'd6,
-                DONE = 5'd7;
+                READ_DATA = 5'd7,
+                DONE = 5'd8;
 
     reg [4:0] state;
     reg [7:0] counter_data_sent;
+    reg fifo_input_latch_now;
+    reg do_fifo_write;
+    reg [31:0] read_data_reg_for_fifo_input;
+
+    assign fifo_data_wr_en = do_fifo_write && clk_rise && !tx_fifo_data_full;
 
     always @(posedge clk_i or negedge rst_n) begin
         if (!rst_n) begin
@@ -185,6 +191,8 @@ module qspi_nor_master (
             done_o <= 1'b0;
             mosi_o <= 1'b0;
             counter_data_flow <= 8'd0;
+            fifo_input_latch_now <= 1'b0;
+            do_fifo_write <= 1'b0;
         end else begin
             /*
                 Write stuff to do during rising edge here
@@ -210,8 +218,37 @@ module qspi_nor_master (
                         cs_n_o <= 1'b0;
                         if (counter_clk_rise == 8'd0) begin
                             state <= SEND_CMD;
-                            counter_clk_rise <= 8'd0;
+                            counter_clk_rise <= 8'd7;
                             counter_clk_fall <= 8'd7;
+                            counter_data_flow <= 8'd0;
+                        end else begin
+                            counter_clk_rise <= counter_clk_rise - 1;
+                        end
+                    end
+
+                    READ_DATA: begin
+                        read_data_reg_for_fifo_input[counter_clk_rise] <= miso_i;
+                        fifo_input_latch_now <= 1'b0;
+                        do_fifo_write <= 1'b0;
+
+                        if (counter_clk_rise == 8'd0) begin
+                            counter_clk_rise <= 8'd7;
+
+                            if (counter_data_flow == data_cnt_i) begin
+                                state <= PULL_DOWN_CS_BEFORE_DONE;
+                                do_fifo_write <= 1'b1;
+                                fifo_data_wr <= read_data_reg_for_fifo_input;
+                            end else begin
+                                read_data_reg_for_fifo_input <= {read_data_reg_for_fifo_input[23:0], 8'b0};
+                                counter_data_flow <= counter_data_flow + 1;
+
+                                if (counter_data_flow[1:0] == 2'b11) begin
+                                    // four byte collected
+                                    do_fifo_write <= 1'b1;
+                                    fifo_data_wr <= read_data_reg_for_fifo_input;
+                                end
+                            end
+
                         end else begin
                             counter_clk_rise <= counter_clk_rise - 1;
                         end
@@ -224,7 +261,6 @@ module qspi_nor_master (
                             state <= IDLE;
                         end
                     end
-
 
                     default: begin
                         
@@ -267,7 +303,7 @@ module qspi_nor_master (
                                     counter_data_flow <= 8'd0;
                                 end else begin
                                     state <= SEND_DUMMY;
-                                    counter_clk_fall <= dummy_cnt_i;
+                                    counter_clk_fall <= dummy_cnt_i - 1;
                                 end
                             end else if (data_mode_i == 2'b00) begin
                                 // no data to transfer after address
@@ -280,7 +316,9 @@ module qspi_nor_master (
 
                     SEND_DUMMY: begin
                         if (counter_clk_fall == 8'd0) begin
-                            
+                            state <= READ_DATA;
+                        end else begin
+                            counter_clk_fall <= counter_clk_fall - 1;
                         end
                     end
 
@@ -321,6 +359,7 @@ module qspi_nor_master (
                     PULL_DOWN_CS_BEFORE_DONE: begin
                         cs_n_o <= 1'b0;
                         clk_out_en <= 1'b0;
+                        do_fifo_write <= 1'b0;
                         state <= DONE;
                     end
 

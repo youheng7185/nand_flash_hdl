@@ -70,7 +70,6 @@ int main(int argc, char **argv) {
 
     tick(dut, tfp);
     dut->instr_i = 0x02; // fixme, its 0x02 actually
-    dut->rd_wr_i = 0;
     dut->data_mode_i = 1;
     dut->data_cnt_i = 15; // 16 bytes
     dut->has_address_i = 1;
@@ -112,6 +111,21 @@ int main(int argc, char **argv) {
     dut->data_cnt_i = 0x00; // 1 byte
     dut->start_i = 1;
     delay(dut, tfp, 300);
+    dut->start_i = 0;
+    delay(dut, tfp, 10);
+
+    /*
+        page read 1-1-1, has dummy cycle
+    */
+    dut->instr_i = 0x0B; // fast read
+    dut->has_address_i = 1;
+    dut->addr_i = 0x00AABB0C;
+    dut->dummy_cnt_i = 8; // 8 dummy cycle
+    dut->data_mode_i = 0b01; // has data
+    dut->data_dir_i = 0; // read data
+    dut->data_cnt_i = 11; // 12 bytes
+    dut->start_i = 1;
+    delay(dut, tfp, 600);
 
 
     std::cout << "finished test\n";
