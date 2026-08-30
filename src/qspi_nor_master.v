@@ -242,6 +242,11 @@ module qspi_nor_master (
                             if (has_address_i == 1'b1) begin
                                 state <= SEND_ADDRESS;
                                 counter_clk_fall <= 8'd23;
+                            end else if (data_mode_i == 2'b01) begin
+                                state <= SEND_DATA;
+                                counter_clk_fall <= 8'd7;
+                                counter_data_sent <= 8'd0;
+                                counter_data_flow <= 8'd0;
                             end else begin
                                 state <= PULL_DOWN_CS_BEFORE_DONE;
                             end
@@ -264,6 +269,9 @@ module qspi_nor_master (
                                     state <= SEND_DUMMY;
                                     counter_clk_fall <= dummy_cnt_i;
                                 end
+                            end else if (data_mode_i == 2'b00) begin
+                                // no data to transfer after address
+                                state <= PULL_DOWN_CS_BEFORE_DONE;
                             end
                         end else begin
                             counter_clk_fall <= counter_clk_fall - 1;

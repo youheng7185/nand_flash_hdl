@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
     dut->rx_fifo_data_wr_en = 0;
 
     tick(dut, tfp);
-    dut->instr_i = 0x8A; // fixme, its 0x02 actually
+    dut->instr_i = 0x02; // fixme, its 0x02 actually
     dut->rd_wr_i = 0;
     dut->data_mode_i = 1;
     dut->data_cnt_i = 15; // 16 bytes
@@ -78,8 +78,40 @@ int main(int argc, char **argv) {
     dut->addr_i = 0x00AABB0C;
     dut->start_i = 1;
 
-    delay(dut, tfp, 2000);
+    delay(dut, tfp, 700);
+    dut->start_i = 0;
+    tick(dut, tfp);
 
+    /*
+        sector erase 1-1-0
+    */
+    dut->instr_i = 0x21;
+    dut->data_mode_i = 0; // no data to transfer
+    dut->has_address_i = 1;
+    dut->addr_i = 0x00AABB0C;
+    dut->start_i = 1;
+
+    delay(dut, tfp, 200);
+    dut->start_i = 0;
+    delay(dut, tfp, 10);
+
+    /*
+        write status register 1-0-1
+    */
+    dut->rx_fifo_data_wr_en = 1;
+    dut->rx_fifo_data_din = 0x000000AB;
+    tick(dut, tfp);
+    dut->rx_fifo_data_wr_en = 0;
+    delay(dut, tfp, 10);
+
+    dut->instr_i = 0x01;
+    dut->has_address_i = 0;
+    dut->addr_i = 0x00;
+    dut->data_dir_i = 1; // write
+    dut->data_mode_i = 1;
+    dut->data_cnt_i = 0x00; // 1 byte
+    dut->start_i = 1;
+    delay(dut, tfp, 300);
 
 
     std::cout << "finished test\n";
