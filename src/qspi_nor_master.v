@@ -3,8 +3,8 @@ module qspi_nor_master (
     input wire rst_n,
 
     output reg cs_n_o,
-    input wire di_i,
-    output reg do_o,
+    input wire miso_i,
+    output reg mosi_o,
     output wire spi_clk_o,
 
     input wire start_i,
@@ -13,8 +13,9 @@ module qspi_nor_master (
     input wire [7:0] instr_i,
     input wire rd_wr_i, // 1 for read, 0 for write
     input wire [4:0] dummy_cnt_i,
-    input wire [1:0] data_mode_i, // 00 for not sending data, 01 to send data based on data_cnt_i
+    input wire [1:0] data_mode_i, // 00 for not sending data, 01 to transmit based on data_cnt_i
     input wire [7:0] data_cnt_i, // write 0 for 1 byte to send
+    input wire has_address_i, // 1 for has address
     input wire data_dir_i, // data direction, 0 to read from flash, 1 to write to flash
 
     input wire [31:0] addr_i, // 4 byte or 3 byte addr
@@ -81,8 +82,8 @@ module qspi_nor_master (
         .empty_o(tx_fifo_data_empty)
     );
     
-    reg fifo_data_rd_en;
-    reg [31:0] fifo_data_rd;
+    wire fifo_data_rd_en;
+    wire [31:0] fifo_data_rd;
 
     // controller reading this, master writes to here, master -> NAND controller
     fifo u_rx_fifo (
@@ -96,18 +97,83 @@ module qspi_nor_master (
         .empty_o(rx_fifo_data_empty)
     );
 
-    localparam IDLE       = 5'd0,
-                CS_N_ASSERT = 5'd1,
-                SEND_CMD = 5'd2,
-                PULL_DOWN_CS_BEFORE_DONE = 5'd3,
-                DONE            = 5'd4;
-
-    reg [4:0] state;
-
     reg clk_out_en;
     assign spi_clk_o = clk_o && clk_out_en;
     reg [7:0] counter_clk_rise;
     reg [7:0] counter_clk_fall;
+    reg [7:0] counter_data_flow;
+
+    // fifo for storing data of page write
+    reg [7:0] data_to_write [0:3];
+
+    localparam FIFO_IDLE       = 4'd0,
+                FIFO_RECEIVE_FETCH_SIGNAL    = 4'd1,
+                FIFO_DEASSERT_READ_REQUEST   = 4'd2,
+                FIFO_WRITE_INTO_DATA_TO_WRITE   = 4'd3,
+                FIFO_WRITE_DONE   = 4'd4;
+
+    reg [3:0] fifo_state;
+    reg fifo_rd_req;
+    reg fifo_rd_req_set;
+    reg fifo_rd_req_done;
+    assign fifo_data_rd_en = fifo_rd_req;
+
+    always @(posedge clk_i or negedge rst_n) begin
+        if (!rst_n) begin
+            fifo_rd_req <= 1'b0;
+            fifo_rd_req_done <= 1'b0;
+            fifo_state <= FIFO_IDLE;
+        end else begin
+            case (fifo_state)
+                FIFO_IDLE: begin
+                    if (fifo_rd_req_set) begin
+                        fifo_state <= FIFO_RECEIVE_FETCH_SIGNAL;
+                    end
+                end
+
+                FIFO_RECEIVE_FETCH_SIGNAL: begin
+                    fifo_rd_req <= 1'b1;
+                    fifo_state <= FIFO_DEASSERT_READ_REQUEST;
+                end
+
+                FIFO_DEASSERT_READ_REQUEST: begin
+                    fifo_rd_req <= 1'b0;
+                    fifo_state <= FIFO_WRITE_INTO_DATA_TO_WRITE;
+                end
+
+                FIFO_WRITE_INTO_DATA_TO_WRITE: begin
+                    data_to_write[0] <= fifo_data_rd[7:0];
+                    data_to_write[1] <= fifo_data_rd[15:8];
+                    data_to_write[2] <= fifo_data_rd[23:16];
+                    data_to_write[3] <= fifo_data_rd[31:24];
+                    fifo_state <= FIFO_WRITE_DONE;
+                end
+
+                FIFO_WRITE_DONE: begin
+                    if (!fifo_rd_req_set) begin
+                        // the main fsm should release this signals afterwards
+                        fifo_state <= FIFO_IDLE;
+                    end
+                end
+                
+                default: begin
+                    $display("shouldnt reach here for fifo");
+                end
+            endcase
+        end
+    end
+
+    localparam IDLE       = 5'd0,
+                CS_N_ASSERT = 5'd1,
+                SEND_CMD = 5'd2,
+                PULL_DOWN_CS_BEFORE_DONE = 5'd3,
+                SEND_ADDRESS = 5'd4,
+                SEND_DUMMY = 5'd5,
+                SEND_DATA = 5'd6,
+                DONE = 5'd7;
+
+    reg [4:0] state;
+    reg [7:0] counter_data_sent;
 
     always @(posedge clk_i or negedge rst_n) begin
         if (!rst_n) begin
@@ -117,6 +183,8 @@ module qspi_nor_master (
             counter_clk_rise <= 8'd0;
             counter_clk_fall <= 8'd0;
             done_o <= 1'b0;
+            mosi_o <= 1'b0;
+            counter_data_flow <= 8'd0;
         end else begin
             /*
                 Write stuff to do during rising edge here
@@ -130,7 +198,11 @@ module qspi_nor_master (
                         done_o <= 1'b0;
                         if (start_i) begin
                             state <= CS_N_ASSERT;
-                            counter_clk_rise <= 8'd2; // dont toggle clk, let cs_n stable
+                            counter_clk_rise <= 8'd0; // dont toggle clk, let cs_n stable
+
+                            if (data_mode_i == 2'b01 && data_dir_i == 1'b1) begin
+                                fifo_rd_req_set <= 1'b1; // fetch data from fifo, prepare data first
+                            end
                         end
                     end
 
@@ -165,10 +237,75 @@ module qspi_nor_master (
                 case (state) 
                     SEND_CMD: begin
                         clk_out_en <= 1'b1;
-                        do_o <= instr_i[counter_clk_fall];
+                        mosi_o <= instr_i[counter_clk_fall];
                         if (counter_clk_fall == 8'd0) begin
-                            state <= PULL_DOWN_CS_BEFORE_DONE;
+                            if (has_address_i == 1'b1) begin
+                                state <= SEND_ADDRESS;
+                                counter_clk_fall <= 8'd23;
+                            end else begin
+                                state <= PULL_DOWN_CS_BEFORE_DONE;
+                            end
                         end else begin
+                            counter_clk_fall <= counter_clk_fall - 1;
+                        end
+                    end
+
+                    SEND_ADDRESS: begin
+                        mosi_o <= addr_i[counter_clk_fall];
+                        if (counter_clk_fall == 8'd0) begin
+                            if (data_mode_i == 2'b01) begin
+                                // has data to send
+                                if (dummy_cnt_i == 5'b0) begin
+                                    state <= SEND_DATA;
+                                    counter_clk_fall <= 8'd7;
+                                    counter_data_sent <= 8'd0;
+                                    counter_data_flow <= 8'd0;
+                                end else begin
+                                    state <= SEND_DUMMY;
+                                    counter_clk_fall <= dummy_cnt_i;
+                                end
+                            end
+                        end else begin
+                            counter_clk_fall <= counter_clk_fall - 1;
+                        end
+                    end
+
+                    SEND_DUMMY: begin
+                        if (counter_clk_fall == 8'd0) begin
+                            
+                        end
+                    end
+
+                    SEND_DATA: begin
+                        mosi_o <= data_to_write[counter_data_flow[1:0]][counter_clk_fall];
+
+                        if (counter_clk_fall == 8'd0) begin
+                            if (counter_data_flow == data_cnt_i) begin
+                                fifo_rd_req_set <= 1'b0;
+                                state <= PULL_DOWN_CS_BEFORE_DONE;
+                            end else begin
+                                // fetch another cycle of fifo
+                                if (counter_data_flow[1:0] == 2'b11) begin
+                                    if (!rx_fifo_data_empty) begin
+                                        counter_clk_fall <= 8'd7;
+                                        counter_data_flow <= counter_data_flow + 1;
+                                        counter_data_sent <= counter_data_sent + 1;
+                                        fifo_rd_req_set <= 1'b1;
+                                        clk_out_en <= 1'b1;
+                                    end else begin
+                                        clk_out_en <= 1'b0;
+                                        $display("fifo is empty, please fill up from master");
+                                    end
+                                end else begin
+                                        fifo_rd_req_set <= 1'b0;
+                                        counter_clk_fall <= 8'd7;
+                                        counter_data_flow <= counter_data_flow + 1;
+                                        counter_data_sent <= counter_data_sent + 1;                                        
+                                    end
+                                end
+                            
+                        end else begin
+                            fifo_rd_req_set <= 1'b0;
                             counter_clk_fall <= counter_clk_fall - 1;
                         end
                     end
