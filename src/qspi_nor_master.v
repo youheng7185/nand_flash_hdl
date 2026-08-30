@@ -230,7 +230,7 @@ module qspi_nor_master (
                     end
 
                     READ_DATA: begin
-                        read_data_reg_for_fifo_input[counter_clk_rise] <= miso_i;
+                        read_data_reg_for_fifo_input[counter_clk_rise[4:0]] <= miso_i;
                         // fifo_input_latch_now <= 1'b0;
                         // do_fifo_write <= 1'b0;
                         
@@ -263,7 +263,7 @@ module qspi_nor_master (
                 case (state) 
                     SEND_CMD: begin
                         clk_out_en <= 1'b1;
-                        mosi_o <= instr_i[counter_clk_fall];
+                        mosi_o <= instr_i[counter_clk_fall[2:0]];
                         if (counter_clk_fall == 8'd0) begin
                             if (has_address_i == 1'b1) begin
                                 state <= SEND_ADDRESS;
@@ -288,7 +288,7 @@ module qspi_nor_master (
                     end
 
                     SEND_ADDRESS: begin
-                        mosi_o <= addr_i[counter_clk_fall];
+                        mosi_o <= addr_i[counter_clk_fall[4:0]];
                         if (counter_clk_fall == 8'd0) begin
                             if (data_mode_i == 2'b01) begin
                                 // has data to send
@@ -320,7 +320,7 @@ module qspi_nor_master (
                     end
 
                     SEND_DATA: begin
-                        mosi_o <= data_to_write[counter_data_flow[1:0]][counter_clk_fall];
+                        mosi_o <= data_to_write[counter_data_flow[1:0]][counter_clk_fall[2:0]];
 
                         if (counter_clk_fall == 8'd0) begin
                             if (counter_data_flow == data_cnt_i) begin
