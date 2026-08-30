@@ -179,7 +179,7 @@ module qspi_nor_master (
     reg do_fifo_write;
     reg [31:0] read_data_reg_for_fifo_input;
 
-    assign fifo_data_wr_en = do_fifo_write && clk_rise && !tx_fifo_data_full;
+    assign fifo_data_wr_en = do_fifo_write && clk_fall && !tx_fifo_data_full;
 
     always @(posedge clk_i or negedge rst_n) begin
         if (!rst_n) begin
@@ -193,6 +193,7 @@ module qspi_nor_master (
             counter_data_flow <= 8'd0;
             fifo_input_latch_now <= 1'b0;
             do_fifo_write <= 1'b0;
+            read_data_reg_for_fifo_input <= 32'b0;
         end else begin
             /*
                 Write stuff to do during rising edge here
@@ -204,6 +205,8 @@ module qspi_nor_master (
                         cs_n_o <= 1'b1;
                         counter_clk_rise <= 8'b0;
                         done_o <= 1'b0;
+                        read_data_reg_for_fifo_input <= 32'b0;
+
                         if (start_i) begin
                             state <= CS_N_ASSERT;
                             counter_clk_rise <= 8'd0; // dont toggle clk, let cs_n stable
@@ -228,28 +231,15 @@ module qspi_nor_master (
 
                     READ_DATA: begin
                         read_data_reg_for_fifo_input[counter_clk_rise] <= miso_i;
-                        fifo_input_latch_now <= 1'b0;
-                        do_fifo_write <= 1'b0;
-
+                        // fifo_input_latch_now <= 1'b0;
+                        // do_fifo_write <= 1'b0;
+                        
                         if (counter_clk_rise == 8'd0) begin
                             counter_clk_rise <= 8'd7;
-
-                            if (counter_data_flow == data_cnt_i) begin
-                                state <= PULL_DOWN_CS_BEFORE_DONE;
-                                do_fifo_write <= 1'b1;
-                                fifo_data_wr <= read_data_reg_for_fifo_input;
-                            end else begin
-                                read_data_reg_for_fifo_input <= {read_data_reg_for_fifo_input[23:0], 8'b0};
-                                counter_data_flow <= counter_data_flow + 1;
-
-                                if (counter_data_flow[1:0] == 2'b11) begin
-                                    // four byte collected
-                                    do_fifo_write <= 1'b1;
-                                    fifo_data_wr <= read_data_reg_for_fifo_input;
-                                end
-                            end
-
+                            $display("miso_i value: %d", miso_i);
+                            $display("current reg: 0x%x", read_data_reg_for_fifo_input);
                         end else begin
+                            $display("miso_i value: %d", miso_i);
                             counter_clk_rise <= counter_clk_rise - 1;
                         end
                     end
@@ -279,7 +269,13 @@ module qspi_nor_master (
                                 state <= SEND_ADDRESS;
                                 counter_clk_fall <= 8'd23;
                             end else if (data_mode_i == 2'b01) begin
-                                state <= SEND_DATA;
+                                if (data_dir_i == 1'b1) begin
+                                    state <= SEND_DATA;
+                                end else begin
+                                    state <= READ_DATA;
+                                    mosi_o <= 1'b0;
+                                end
+
                                 counter_clk_fall <= 8'd7;
                                 counter_data_sent <= 8'd0;
                                 counter_data_flow <= 8'd0;
@@ -317,6 +313,7 @@ module qspi_nor_master (
                     SEND_DUMMY: begin
                         if (counter_clk_fall == 8'd0) begin
                             state <= READ_DATA;
+                            counter_clk_fall <= 8'd7;
                         end else begin
                             counter_clk_fall <= counter_clk_fall - 1;
                         end
@@ -355,7 +352,32 @@ module qspi_nor_master (
                             counter_clk_fall <= counter_clk_fall - 1;
                         end
                     end
-                    
+
+                    READ_DATA: begin
+                        do_fifo_write <= 1'b0;
+
+                        if (counter_clk_fall == 8'd0) begin
+                            counter_clk_fall <= 8'd7;
+                            counter_data_flow <= counter_data_flow + 1;
+                            read_data_reg_for_fifo_input <= {read_data_reg_for_fifo_input[23:0], 8'b0};
+
+                            if (counter_data_flow == data_cnt_i) begin
+                                state <= PULL_DOWN_CS_BEFORE_DONE;
+                                do_fifo_write <= 1'b1;
+                                fifo_data_wr <= read_data_reg_for_fifo_input;
+                            end else if (counter_data_flow[1:0] == 2'b11) begin
+                                    // four byte collected
+                                    do_fifo_write <= 1'b1;
+                                    fifo_data_wr <= read_data_reg_for_fifo_input;
+                                    read_data_reg_for_fifo_input <= 32'b0;
+                            end
+
+                        end else begin
+                            counter_clk_fall <= counter_clk_fall - 1;
+                        end
+
+                    end
+
                     PULL_DOWN_CS_BEFORE_DONE: begin
                         cs_n_o <= 1'b0;
                         clk_out_en <= 1'b0;

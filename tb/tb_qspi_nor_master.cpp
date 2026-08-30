@@ -125,8 +125,51 @@ int main(int argc, char **argv) {
     dut->data_dir_i = 0; // read data
     dut->data_cnt_i = 11; // 12 bytes
     dut->start_i = 1;
-    delay(dut, tfp, 600);
+    delay(dut, tfp, 180);
 
+    for (int i = 0; i < 60; i++) {
+        dut->miso_i = i % 2;
+        delay(dut, tfp, 5);
+    }
+
+    delay(dut, tfp, 200);
+
+    dut->start_i = 0;
+    delay(dut, tfp, 10);
+
+    dut->tx_fifo_rd_en = 1;
+    for (int i = 0; i < 3; i++) {
+        tick(dut, tfp);
+        std::cout << "tick out the data: " << std::hex << dut->tx_fifo_data_dout << std::endl;
+    }
+    dut->tx_fifo_rd_en = 0;    
+    tick(dut, tfp);
+
+    /*
+        read registers or status 1-0-1
+    */
+    dut->instr_i = 0x05; // fast read
+    dut->has_address_i = 0;
+    dut->dummy_cnt_i = 0; // 0 dummy cycle
+    dut->data_mode_i = 0b01; // has data
+    dut->data_dir_i = 0; // read data
+    dut->data_cnt_i = 0; // 1 bytes
+    dut->start_i = 1;
+
+    delay(dut, tfp, 20);
+
+    for (int i = 0; i < 60; i++) {
+        dut->miso_i = i % 2;
+        delay(dut, tfp, 5);
+    }
+
+    delay(dut, tfp, 100);
+    dut->tx_fifo_rd_en = 1;
+    tick(dut, tfp);
+    std::cout << "tick out the data: " << std::hex << dut->tx_fifo_data_dout << std::endl;
+    printf("in binary: 0b%b\n", dut->tx_fifo_data_dout);
+    dut->tx_fifo_rd_en = 0;    
+    tick(dut, tfp);
 
     std::cout << "finished test\n";
 
